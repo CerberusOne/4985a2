@@ -21,6 +21,8 @@
 #define STRICT
 #define _CRT_SECURE_NO_WARNINGS
 #define _UNICODE
+#define SERVER_TCP_PORT			7000	// Default port
+#define BUFSIZE					255		// Buffer length
 
 #include <windows.h>
 #include <string>
@@ -33,10 +35,14 @@ using namespace std;
 
 //Function prototypes
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);			//Receives input directed 
-				
+bool openFile(static HWND FilenameWnd);							//Opens a file browser
+OPENFILENAME createOfnStruct(char filenameBuffer[128]);			//creates an OPENFILENAME object
+void sendFile();												//send files to server
+
 //Global variables
 static TCHAR Name[] = TEXT("Assignment 2");			//Name of main window
 HWND hwnd;											//Handle to main window
+HANDLE fileHandle;									//Handle to the requested file to send
 HINSTANCE mainInst;									//Instance of main window//at this application
 
 /*---------------------------------------------------------------------------------
@@ -146,6 +152,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
 	static HWND PacketQuantityWndTitle;
 	static HWND PacketQuantityWnd;
 
+	static HWND FilenameWndTitle;
+	static HWND FilenameWnd;
+
 	static HWND ReceivedMessageWndTitle;
 	static HWND ReceivedMessageWnd;
 
@@ -156,10 +165,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
 		switch (LOWORD(wParam))  //Parsing the menu selections
 		{
 		case IDM_OPEN_FILE:
-			//findIP(HostNameWnd, output);
+			//openFile();
+			//OutputDebugStringA("hello");
+			if (openFile(FilenameWnd)) {
+				OutputDebugString("File open: Successful");
+			}
+			else {
+				OutputDebugString("File open: Failed!");
+			}
 			break;
 		case IDM_SEND:
-			
+			sendFile();
 			break;
 		case WM_DESTROY:	// Terminate program
 			PostQuitMessage(0);
@@ -188,20 +204,25 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
 		ProtocolWnd = CreateWindowEx(NULL, "EDIT", "", WS_VISIBLE | WS_CHILD | WS_BORDER,
 			10, 120, 200, 50, hwnd, NULL, mainInst, NULL);
 
-		PacketSizeWndTitle = CreateWindowEx(NULL, "STATIC", "Packet Size:", WS_VISIBLE | WS_CHILD,
-			250, 100, 200, 20, hwnd, NULL, mainInst, NULL);
-		PacketSizeWnd = CreateWindowEx(NULL, "EDIT", "", WS_VISIBLE | WS_CHILD | WS_BORDER,
-			250, 120, 200, 50, hwnd, NULL, mainInst, NULL);
-
 		PacketQuantityWndTitle = CreateWindowEx(NULL, "STATIC", "Packet Quantity:", WS_VISIBLE | WS_CHILD,
 			10, 190, 200, 20, hwnd, NULL, mainInst, NULL);
 		PacketQuantityWnd = CreateWindowEx(NULL, "EDIT", "", WS_VISIBLE | WS_CHILD | WS_BORDER,
 			10, 210, 200, 50, hwnd, NULL, mainInst, NULL);
 
+		PacketSizeWndTitle = CreateWindowEx(NULL, "STATIC", "Packet Size:", WS_VISIBLE | WS_CHILD,
+			250, 190, 200, 20, hwnd, NULL, mainInst, NULL);
+		PacketSizeWnd = CreateWindowEx(NULL, "EDIT", "", WS_VISIBLE | WS_CHILD | WS_BORDER,
+			250, 210, 200, 50, hwnd, NULL, mainInst, NULL);
+
+		FilenameWndTitle = CreateWindowEx(NULL, "STATIC", "Filename:", WS_VISIBLE | WS_CHILD,
+			10, 280, 440, 20, hwnd, NULL, mainInst, NULL);
+		FilenameWnd = CreateWindowEx(NULL, "STATIC", "", WS_VISIBLE | WS_CHILD | WS_BORDER,
+			10, 310, 440, 50, hwnd, NULL, mainInst, NULL);
+
 		ReceivedMessageWndTitle = CreateWindowEx(NULL, "STATIC", "Output:", WS_VISIBLE | WS_CHILD,
-			10, 280, 445, 20, hwnd, NULL, mainInst, NULL);
+			10, 370, 445, 20, hwnd, NULL, mainInst, NULL);
 		ReceivedMessageWnd = CreateWindowEx(NULL, "STATIC", "", WS_VISIBLE | WS_CHILD,
-			10, 300, 445, 320, hwnd, NULL, mainInst, NULL);
+			10, 400, 445, 320, hwnd, NULL, mainInst, NULL);
 		break;
 
 	default:
@@ -210,3 +231,160 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
+
+//openFile(){}
+bool openFile(static HWND FilenameWnd) {
+	OPENFILENAME openFilenameStruct;	//dialog box structure for file browser
+	char filenameBuffer[128];			//buffer for filename
+	TCHAR filename[MAX_PATH];
+	DWORD dwRet;
+
+	//fileHandle = NULL;					//reset the handle
+	openFilenameStruct = createOfnStruct(filenameBuffer); //initialize the dialog box structure
+
+	//display a file browser
+	if (GetOpenFileName(&openFilenameStruct) == TRUE) {
+		fileHandle = CreateFile(openFilenameStruct.lpstrFile,
+			GENERIC_READ,
+			0,
+			(LPSECURITY_ATTRIBUTES)NULL,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL,
+			(HANDLE)NULL);
+	}
+
+	if (fileHandle == INVALID_HANDLE_VALUE) {
+		printf("Count not open file (error %d\n)", GetLastError());
+		return false;
+	}
+	
+//set filename sub windows to new filename
+
+	//LPSTR output = openFilenameStruct.lpstrFile;
+	dwRet = GetFinalPathNameByHandle(fileHandle, filename, MAX_PATH, VOLUME_NAME_NT);
+	if (dwRet < MAX_PATH) {
+		//printf(TEXT("\nThe final path is: %s\n"), filename);
+		//SetWindowText(FilenameWnd, filename);
+	}
+
+	
+	cout << openFilenameStruct.lpstrFile;
+
+	//loadFile(fileHandle); //save file 
+
+	CloseHandle(fileHandle);
+
+	return true;
+}
+
+OPENFILENAME createOfnStruct(char filenameBuffer[128]) {
+	OPENFILENAME openFilenameStruct;	//dialog box structure for file browser
+	
+	//initialize the dialog box structure
+	ZeroMemory(&openFilenameStruct, sizeof(openFilenameStruct));
+	openFilenameStruct.lStructSize = sizeof(openFilenameStruct);
+	openFilenameStruct.hwndOwner = hwnd;
+	openFilenameStruct.lpstrFile = filenameBuffer;
+	openFilenameStruct.lpstrFile[0] = '\0';	//set to null so that struct doesn't use garbage
+	openFilenameStruct.nMaxFile = sizeof(filenameBuffer);
+	openFilenameStruct.lpstrFilter = "All\0*.*\0Text\0*.TXT\0";
+	openFilenameStruct.nFilterIndex = 1;
+	openFilenameStruct.lpstrFileTitle = NULL;
+	openFilenameStruct.nMaxFileTitle = 0;
+	openFilenameStruct.lpstrInitialDir = NULL;
+	openFilenameStruct.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	return openFilenameStruct;
+}
+
+/*
+void loadFile(HANDLE filename) {
+	char //create a buffer
+	//save file content to a buffer
+	//packetizeFile(file buffer)
+}
+*/
+
+//packetizeFile(file buffer)
+	//create an array buffer of size "quantity of packets"
+	//for every segment of data in file with the size of "quantity of packets"
+	//**for(packetNumber = 0; packetNumber < "quantity of packets" && file isn't EOF; packetNumber++)
+		//save in array buffer 
+
+
+void sendFile() {
+	int n, ns, bytes_to_read;
+	int port, err;
+	SOCKET sd;
+	struct hostent	*hp;
+	struct sockaddr_in server;
+	char  *host, *bp, rbuf[BUFSIZE], sbuf[BUFSIZE], **pptr;
+	WSADATA WSAData;
+	WORD wVersionRequested;
+
+	//send each packet in array buffer
+	host = "192.168.0.12";
+	port = SERVER_TCP_PORT;
+
+	wVersionRequested = MAKEWORD(2, 2);
+	err = WSAStartup(wVersionRequested, &WSAData);
+	if (err != 0) //No usable DLL
+	{
+		printf("DLL not found!\n");
+		exit(1);
+	}
+
+	// Create the socket
+	if ((sd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+	{
+		perror("Cannot create socket");
+		exit(1);
+	}
+
+	// Initialize and set up the address structure
+	memset((char *)&server, 0, sizeof(struct sockaddr_in));
+	server.sin_family = AF_INET;
+	server.sin_port = htons(port);
+	if ((hp = gethostbyname(host)) == NULL)
+	{
+		fprintf(stderr, "Unknown server address\n");
+		exit(1);
+	}
+
+	// Copy the server address
+	memcpy((char *)&server.sin_addr, hp->h_addr, hp->h_length);
+
+	// Connecting to the server
+	if (connect(sd, (struct sockaddr *)&server, sizeof(server)) == -1)
+	{
+		fprintf(stderr, "Can't connect to server\n");
+		perror("connect");
+		exit(1);
+	}
+	printf("Connected:    Server Name: %s\n", hp->h_name);
+	pptr = hp->h_addr_list;
+	printf("\t\tIP Address: %s\n", inet_ntoa(server.sin_addr));
+	printf("Transmiting:\n");
+	memset((char *)sbuf, 0, sizeof(sbuf));
+	gets_s(sbuf); // get user's text
+
+	// Transmit data through the socket
+	ns = send(sd, sbuf, BUFSIZE, 0);
+	printf("Receive:\n");
+	bp = rbuf;
+	bytes_to_read = BUFSIZE;
+
+	// client makes repeated calls to recv until no more data is expected to arrive.
+	while ((n = recv(sd, bp, bytes_to_read, 0)) < BUFSIZE)
+	{
+		bp += n;
+		bytes_to_read -= n;
+		if (n == 0)
+			break;
+	}
+	printf("%s\n", rbuf);
+	closesocket(sd);
+	WSACleanup();
+
+
+}
